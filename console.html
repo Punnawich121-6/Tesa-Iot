@@ -20,7 +20,9 @@
 
   #app{
     display:grid; height:100vh;
-    grid-template-columns:1fr 372px;
+    /* minmax(0,1fr) ไม่ใช่ 1fr — เพราะ 1fr = minmax(auto,1fr) ซึ่งบรรทัด JSON
+       ยาว ๆ ใน #logout จะดันคอลัมน์นี้ให้กว้างจนแผงขวาหลุดออกนอกจอ */
+    grid-template-columns:minmax(0,1fr) 372px;
     grid-template-rows:44px 1fr 208px;
     grid-template-areas:"head head" "view side" "log side";
   }
@@ -41,7 +43,7 @@
   #link-dot{color:var(--grn)}
 
   /* ---------- viewport ---------- */
-  #view{grid-area:view; position:relative; background:var(--bg)}
+  #view{grid-area:view; position:relative; background:var(--bg); min-width:0}
   #view canvas{display:block}
   #hint{
     position:absolute; left:14px; bottom:12px; font-size:11px; color:var(--dim);
@@ -123,6 +125,7 @@
   #log{
     grid-area:log; border-top:1px solid var(--line); background:#010409;
     display:flex; flex-direction:column;
+    min-width:0;                 /* กันเนื้อหายาวดันกริด */
   }
   #logbar{
     display:flex;align-items:center;gap:10px;padding:6px 12px;
@@ -133,7 +136,8 @@
   #logbar button{padding:4px 9px;font-size:11px}
   #logbar select{width:auto;padding:4px 6px;font-size:11px}
   #logout{
-    flex:1; overflow-y:auto; padding:8px 12px; font-size:11.5px; line-height:1.6;
+    /* overflow ทั้งสองแกน — บรรทัด JSON ยาวให้เลื่อนในกล่องนี้เอง ห้ามดันหน้าเว็บ */
+    flex:1; overflow:auto; padding:8px 12px; font-size:11.5px; line-height:1.6;
     white-space:pre; color:#9fb1c1;
   }
   #logout .t{color:#6e7681}
