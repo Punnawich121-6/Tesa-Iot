@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firefighter Robot — 3D Model</title>
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overflow: hidden;
+  }
+  #viewport { position: fixed; inset: 0; }
+  #viewport canvas { display: block; }
+
+  #overlay {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    padding: 14px 18px;
+    background: rgba(22, 27, 34, .82);
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+  }
+  #overlay h1 { font-size: 15px; font-weight: 600; letter-spacing: .2px; }
+  #overlay p { font-size: 12px; color: #8b949e; margin-top: 4px; }
+
+  #loader {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 14px;
+    background: #0d1117;
+    transition: opacity .4s;
+  }
+  #loader.done { opacity: 0; pointer-events: none; }
+  #bar { width: 220px; height: 3px; background: #21262d; border-radius: 2px; overflow: hidden; }
+  #bar > i { display: block; height: 100%; width: 0; background: #f85149; transition: width .15s; }
+  #pct { font-size: 12px; color: #8b949e; font-variant-numeric: tabular-nums; }
+  #err { color: #f85149; max-width: 420px; text-align: center; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="viewport"></div>
+
+<div id="overlay">
+  <h1>Firefighter Robot</h1>
+  <p>ลากเพื่อหมุน · สกอลล์เพื่อซูม · คลิกขวาลากเพื่อเลื่อน</p>
+  <p style="margin-top:8px"><a href="console.html" style="color:#58a6ff;pointer-events:auto">🎮 เปิด Drive Console →</a></p>
+</div>
+
+<div id="loader">
+  <div id="bar"><i></i></div>
+  <div id="pct">กำลังโหลดโมเดล…</div>
+  <div id="err"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader }     from 'three/addons/loaders/STLLoader.js';
+
+const MODEL_URL = 'Firefighter-robot.stl';
+
+const viewport = document.getElementById('viewport');
+const loaderEl = document.getElementById('loader');
+const barEl    = document.querySelector('#bar > i');
+const pctEl    = document.getElementById('pct');
+const errEl    = document.getElementById('err');
+
+// --- renderer / scene / camera ---------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+viewport.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 10000);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// --- lighting --------------------------------------------------------------
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x1a1f26, 1.1));
+
+const key = new THREE.DirectionalLight(0xffffff, 2.0);
+key.position.set(1, 1.4, 1);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+scene.add(key);
+
+const fill = new THREE.DirectionalLight(0xff9d7a, 0.7);
+fill.position.set(-1, 0.4, -0.8);
+scene.add(fill);
+
+// --- load model ------------------------------------------------------------
+new STLLoader().load(
+  MODEL_URL,
+  onLoaded,
+  e => {
+    if (!e.lengthComputable) return;
+    const p = e.loaded / e.total;
+    barEl.style.width = (p * 100) + '%';
+    pctEl.textContent = `กำลังโหลดโมเดล… ${(p * 100).toFixed(0)}%`;
+  },
+  () => {
+    pctEl.textContent = 'โหลดโมเดลไม่สำเร็จ';
+    errEl.textContent = `อ่าน ${MODEL_URL} ไม่ได้ — ต้องเปิดผ่าน local server ` +
+                        '(เช่น python3 -m http.server) ไม่ใช่เปิดไฟล์ตรง ๆ ด้วย file://';
+  }
+);
+
+function onLoaded(geometry) {
+  geometry.computeVertexNormals();
+  geometry.center();
+
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    color: 0xc2c8d0,
+    metalness: 0.45,
+    roughness: 0.5,
+    flatShading: false
+  }));
+  mesh.castShadow = mesh.receiveShadow = true;
+
+  // this STL is already Y-up (base at y≈0, X/Z symmetric) — no rotation needed
+  scene.add(mesh);
+
+  // frame the model
+  const box  = new THREE.Box3().setFromObject(mesh);
+  const size = box.getSize(new THREE.Vector3());
+  const mid  = box.getCenter(new THREE.Vector3());
+  const radius = size.length() / 2;
+
+  mesh.position.y -= box.min.y;   // sit on the ground plane
+  controls.target.set(mid.x, mid.y - box.min.y, mid.z);
+  camera.position.set(radius * 1.5, radius * 1.2, radius * 1.9);
+  camera.near = radius / 100;
+  camera.far  = radius * 100;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  // ground + shadow frustum sized to the model
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(radius * 12, radius * 12),
+    new THREE.MeshStandardMaterial({ color: 0x161b22, roughness: 1 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  key.position.set(radius, radius * 1.6, radius).add(controls.target);
+  key.target.position.copy(controls.target);
+  scene.add(key.target);
+  const s = radius * 1.6;
+  Object.assign(key.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 0.1, far: radius * 8 });
+  key.shadow.camera.updateProjectionMatrix();
+
+  scene.add(new THREE.GridHelper(radius * 12, 40, 0x21262d, 0x1a1f26));
+
+  loaderEl.classList.add('done');
+  console.log(`loaded ${(geometry.attributes.position.count / 3).toLocaleString()} triangles`);
+}
+
+// --- loop ------------------------------------------------------------------
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

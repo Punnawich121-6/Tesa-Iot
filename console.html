@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FireBot — Drive Console</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --line2:#21262d;
+    --txt:#e6edf3; --dim:#8b949e; --red:#f85149; --grn:#3fb950;
+    --amb:#d29922; --blu:#58a6ff; --cyn:#39c5cf;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--txt); overflow:hidden; height:100vh;
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
+
+  #app{
+    display:grid; height:100vh;
+    grid-template-columns:1fr 372px;
+    grid-template-rows:44px 1fr 208px;
+    grid-template-areas:"head head" "view side" "log side";
+  }
+
+  /* ---------- header ---------- */
+  #head{
+    grid-area:head; display:flex; align-items:center; gap:18px; padding:0 16px;
+    background:var(--panel); border-bottom:1px solid var(--line);
+  }
+  #head b{font-size:14px;letter-spacing:.2px}
+  #head .tag{
+    font-size:11px; color:var(--dim); border:1px solid var(--line);
+    border-radius:20px; padding:2px 9px;
+  }
+  #head .spacer{flex:1}
+  #head a{color:var(--dim);text-decoration:none;font-size:12px}
+  #head a:hover{color:var(--blu)}
+  #link-dot{color:var(--grn)}
+
+  /* ---------- viewport ---------- */
+  #view{grid-area:view; position:relative; background:var(--bg)}
+  #view canvas{display:block}
+  #hint{
+    position:absolute; left:14px; bottom:12px; font-size:11px; color:var(--dim);
+    background:rgba(13,17,23,.72); padding:6px 10px; border-radius:6px;
+    border:1px solid var(--line2); pointer-events:none;
+  }
+  #legend{
+    position:absolute; right:14px; top:12px; font-size:11px;
+    background:rgba(13,17,23,.72); padding:8px 11px; border-radius:6px;
+    border:1px solid var(--line2); pointer-events:none;
+  }
+  #legend div{display:flex;align-items:center;gap:7px;margin:2px 0}
+  #legend i{width:16px;height:2px;display:block;border-radius:2px}
+  #drift{margin-top:6px;padding-top:6px;border-top:1px solid var(--line2);color:var(--dim)}
+
+  /* ---------- sidebar ---------- */
+  #side{
+    grid-area:side; background:var(--panel); border-left:1px solid var(--line);
+    overflow-y:auto; padding:14px;
+  }
+  .sec{margin-bottom:16px}
+  .sec>h2{
+    font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.9px;
+    color:var(--dim); margin-bottom:8px; display:flex; align-items:center; gap:8px;
+  }
+  .sec>h2:after{content:"";flex:1;height:1px;background:var(--line)}
+
+  /* dpad */
+  #dpad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+  #dpad button{grid-column:auto}
+  #dpad .b-w{grid-column:2}
+  #dpad .b-a{grid-column:1;grid-row:2}
+  #dpad .b-s{grid-column:2;grid-row:2}
+  #dpad .b-d{grid-column:3;grid-row:2}
+  button{
+    background:#21262d; color:var(--txt); border:1px solid var(--line);
+    border-radius:6px; padding:9px 10px; font:inherit; cursor:pointer;
+    transition:background .12s,border-color .12s; user-select:none;
+  }
+  button:hover{background:#2d333b}
+  button.on{background:#1f6feb;border-color:#388bfd}
+  button.danger{color:var(--red)}
+  button.danger.on{background:var(--red);border-color:var(--red);color:#fff}
+  .row{display:flex;gap:6px}
+  .row>*{flex:1}
+
+  label.fld{display:block;margin-bottom:9px}
+  label.fld span{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px}
+  input[type=range]{width:100%;accent-color:var(--red)}
+  select{
+    width:100%; background:#21262d; color:var(--txt); border:1px solid var(--line);
+    border-radius:6px; padding:7px 8px; font:inherit;
+  }
+
+  /* wheel cards */
+  .wheels{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .wc{background:#0d1117;border:1px solid var(--line);border-radius:8px;padding:9px 10px}
+  .wc h3{font-size:11px;color:var(--dim);margin-bottom:7px;display:flex;justify-content:space-between}
+  .wc h3 em{font-style:normal;color:var(--cyn);font-size:10px}
+  .kv{display:flex;justify-content:space-between;font-size:11.5px;margin:3px 0}
+  .kv span:first-child{color:var(--dim)}
+  .bar{height:3px;background:var(--line2);border-radius:2px;overflow:hidden;margin:6px 0 2px}
+  .bar>i{display:block;height:100%;width:0;background:var(--cyn);transition:width .1s}
+  .bar.hot>i{background:var(--red)}
+
+  /* state grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px}
+  .badge{
+    font-size:10px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);
+    color:var(--dim);
+  }
+  .badge.ok{color:var(--grn);border-color:#238636}
+  .badge.bad{color:var(--red);border-color:var(--red);background:rgba(248,81,73,.1)}
+  #head .tag.ok{color:var(--grn);border-color:#238636}
+  #head .tag.bad{color:var(--red);border-color:var(--red)}
+  #head .tag.wait{color:var(--amb);border-color:var(--amb)}
+
+  /* ---------- log ---------- */
+  #log{
+    grid-area:log; border-top:1px solid var(--line); background:#010409;
+    display:flex; flex-direction:column;
+  }
+  #logbar{
+    display:flex;align-items:center;gap:10px;padding:6px 12px;
+    background:var(--panel);border-bottom:1px solid var(--line);
+  }
+  #logbar .topic{color:var(--cyn);font-size:11.5px}
+  #logbar .spacer{flex:1}
+  #logbar button{padding:4px 9px;font-size:11px}
+  #logbar select{width:auto;padding:4px 6px;font-size:11px}
+  #logout{
+    flex:1; overflow-y:auto; padding:8px 12px; font-size:11.5px; line-height:1.6;
+    white-space:pre; color:#9fb1c1;
+  }
+  #logout .t{color:#6e7681}
+  #logout .k{color:var(--blu)}
+  #logout .n{color:var(--amb)}
+  #logout .s{color:var(--grn)}
+  #logout .f{color:var(--red)}
+
+  #loader{
+    position:fixed;inset:0;display:grid;place-content:center;justify-items:center;gap:13px;
+    background:var(--bg);z-index:20;transition:opacity .4s;
+  }
+  #loader.done{opacity:0;pointer-events:none}
+  #lbar{width:230px;height:3px;background:var(--line2);border-radius:2px;overflow:hidden}
+  #lbar>i{display:block;height:100%;width:0;background:var(--red);transition:width .15s}
+  #lpct{font-size:12px;color:var(--dim)}
+  #lerr{color:var(--red);max-width:430px;text-align:center;font-size:12.5px}
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <div id="head">
+    <b>FireBot · Drive Console</b>
+    <span class="tag mono">R = 45.15 mm</span>
+    <span class="tag mono">L = 333.5 mm</span>
+    <span class="tag">differential drive · 2 ล้อ</span>
+    <span class="spacer"></span>
+    <span class="tag" id="mq-tag">MQTT: ปิด</span>
+    <span class="tag" id="keys">หยุด</span>
+    <span class="tag mono" id="hz">— Hz</span>
+    <a href="index.html">← กลับหน้า viewer</a>
+  </div>
+
+  <div id="view">
+    <div id="legend">
+      <div><i style="background:#3fb950"></i> เส้นทางจริง (ground truth)</div>
+      <div><i style="background:#d29922"></i> เส้นทางจาก encoder (odom)</div>
+      <div id="drift" class="mono">drift 0.00 m</div>
+    </div>
+    <div id="hint">คีย์บอร์ด W/S เดินหน้า-ถอย · A/D เลี้ยว (กดค้าง) · Space เบรก · X E-STOP · ลากเมาส์หมุนกล้อง<br>
+      ปุ่มบนจอเป็นแบบกดติด — คลิกครั้งเดียวขับต่อเนื่อง คลิกอีกครั้งหยุด</div>
+  </div>
+
+  <div id="side">
+
+    <div class="sec">
+      <h2>ควบคุม</h2>
+      <div id="dpad">
+        <button class="b-w" data-key="w">▲ หน้า</button>
+        <button class="b-a" data-key="a">◀ ซ้าย</button>
+        <button class="b-s" data-key="s">▼ ถอย</button>
+        <button class="b-d" data-key="d">▶ ขวา</button>
+      </div>
+      <label class="fld">
+        <span>ความเร็วสูงสุด <b class="mono" id="thr-v">0.60 m/s</b></span>
+        <input type="range" id="thr" min="10" max="100" value="50">
+      </label>
+      <label class="fld">
+        <span>สภาพพื้น (มีผลต่อ slip)</span>
+        <select id="surf">
+          <option value="0.010">พื้นแห้ง — slip ต่ำ</option>
+          <option value="0.120" selected>พื้นเปียกน้ำดับเพลิง</option>
+          <option value="0.240">เศษปรักหักพัง</option>
+        </select>
+      </label>
+      <div class="row" style="margin-bottom:6px">
+        <button id="btn-stall" class="danger">🔧 จำลองล้อติด</button>
+        <button id="btn-estop" class="danger">⛔ E-STOP</button>
+      </div>
+      <div class="row">
+        <button id="btn-reset">↺ รีเซ็ต odom</button>
+        <button id="btn-cam">🎥 ตามหุ่น</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>เชื่อมต่อ Bitstream</h2>
+      <div class="row" style="margin-bottom:8px">
+        <button id="btn-mq">🔗 ต่อ broker</button>
+        <select id="mq-rate" style="flex:0 0 92px">
+          <option value="5">5 Hz</option>
+          <option value="10">10 Hz</option>
+          <option value="20" selected>20 Hz</option>
+          <option value="30">30 Hz</option>
+        </select>
+      </div>
+      <div class="kv"><span>ส่งไปแล้ว</span><b class="mono" id="mq-count">0</b></div>
+      <div id="mq-note" class="mono" style="font-size:10.5px;color:var(--dim);margin-top:6px;word-break:break-all">ยังไม่เชื่อมต่อ</div>
+      <div style="font-size:10.5px;color:var(--dim);margin-top:9px;line-height:1.8">
+        topic ที่ส่งออก:<br>
+        <span class="mono" style="color:var(--cyn)">…/R1/drive</span> — payload เต็ม<br>
+        <span class="mono" style="color:var(--cyn)">…/R1/twin</span> — แบน 8 ค่า สำหรับ Part Spin / Part Transform
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>ล้อ · joint_states</h2>
+      <div class="wheels">
+        <div class="wc" id="wc-L">
+          <h3>ล้อซ้าย <em>wheel_left_joint</em></h3>
+          <div class="bar"><i></i></div>
+          <div class="kv"><span>rpm</span><b class="mono" data-f="rpm">0.0</b></div>
+          <div class="kv"><span>posRad</span><b class="mono" data-f="pos">0.00</b></div>
+          <div class="kv"><span>current</span><b class="mono" data-f="cur">0.00 A</b></div>
+          <div class="kv"><span>temp</span><b class="mono" data-f="tmp">32.0 °C</b></div>
+        </div>
+        <div class="wc" id="wc-R">
+          <h3>ล้อขวา <em>wheel_right_joint</em></h3>
+          <div class="bar"><i></i></div>
+          <div class="kv"><span>rpm</span><b class="mono" data-f="rpm">0.0</b></div>
+          <div class="kv"><span>posRad</span><b class="mono" data-f="pos">0.00</b></div>
+          <div class="kv"><span>current</span><b class="mono" data-f="cur">0.00 A</b></div>
+          <div class="kv"><span>temp</span><b class="mono" data-f="tmp">32.0 °C</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h2>สถานะหุ่น · odom</h2>
+      <div class="grid2">
+        <div class="kv"><span>v</span><b class="mono" id="s-v">0.000</b></div>
+        <div class="kv"><span>ω</span><b class="mono" id="s-w">0.000</b></div>
+        <div class="kv"><span>odom x</span><b class="mono" id="s-x">0.00</b></div>
+        <div class="kv"><span>odom y</span><b class="mono" id="s-y">0.00</b></div>
+        <div class="kv"><span>θ</span><b class="mono" id="s-th">0.0°</b></div>
+        <div class="kv"><span>ระยะรวม</span><b class="mono" id="s-d">0.0 m</b></div>
+        <div class="kv"><span>slip</span><b class="mono" id="s-slip">0.00</b></div>
+        <div class="kv"><span>เอียง</span><b class="mono" id="s-tilt">0.0°</b></div>
+        <div class="kv"><span>แบต</span><b class="mono" id="s-bat">100%</b></div>
+        <div class="kv"><span>Wh/m</span><b class="mono" id="s-whm">—</b></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:9px">
+        <span class="badge" id="b-drive">idle</span>
+        <span class="badge" id="b-stall">no stall</span>
+        <span class="badge" id="b-tilt">tilt ok</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="log">
+    <div id="logbar">
+      <span class="topic mono">firebot/tesa-demo/robot/R1/drive</span>
+      <span class="spacer"></span>
+      <select id="rate">
+        <option value="1">1 Hz</option>
+        <option value="5" selected>5 Hz</option>
+        <option value="10">10 Hz</option>
+        <option value="20">20 Hz</option>
+      </select>
+      <button id="btn-pause">⏸ พัก</button>
+      <button id="btn-copy">คัดลอกล่าสุด</button>
+      <button id="btn-clear">ล้าง</button>
+    </div>
+    <div id="logout" class="mono"></div>
+  </div>
+
+</div>
+
+<div id="loader">
+  <div id="lbar"><i></i></div>
+  <div id="lpct">กำลังโหลดโมเดล…</div>
+  <div id="lerr"></div>
+</div>
+
+<!-- mqtt.js vendored ในเครื่อง (ไม่พึ่ง CDN) — สร้าง global `mqtt` -->
+<script src="vendor/mqtt.min.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader }     from 'three/addons/loaders/STLLoader.js';
+
+/* =========================================================================
+   ค่าที่วัดจาก Firefighter-robot.stl โดยตรง (หน่วยในไฟล์ = mm)
+   ========================================================================= */
+const WHEEL_R_MM   = 45.15;                    // รัศมีล้อ
+const WHEEL_SEP_MM = 333.5;                    // ระยะระหว่างล้อซ้าย-ขวา
+const AXLE         = { x: 166.75, y: 17.15, z: 2.15 };   // ศูนย์เพลาล้อ (ขวา = -x)
+const GROUND_Y     = -28.05;                   // จุดต่ำสุดของล้อ = พื้น
+
+const R = WHEEL_R_MM / 1000;                   // 0.04515 m
+const L = WHEEL_SEP_MM / 1000;                 // 0.3335  m
+
+// ลิมิตการขับ
+const MAX_V = 1.2, MAX_W = 2.6;                // m/s, rad/s (คูณกับ throttle)
+const ACC_V = 1.6, ACC_W = 5.0;                // ramp
+const V_BATT = 24, BATT_WH = 240;              // 24 V, 10 Ah
+
+/* =========================================================================
+   ฉาก
+   ========================================================================= */
+const view = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+scene.fog = new THREE.Fog(0x0d1117, 3000, 11000);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 5, 40000);
+camera.position.set(900, 700, 1250);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(0, 120, 0);
+
+scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x1a1f26, 1.15));
+const key = new THREE.DirectionalLight(0xffffff, 2.0);
+key.position.set(700, 1100, 600);
+key.castShadow = true;
+key.shadow.mapSize.set(2048,2048);
+Object.assign(key.shadow.camera,{left:-900,right:900,top:900,bottom:-900,near:1,far:4000});
+key.shadow.camera.updateProjectionMatrix();
+scene.add(key);
+scene.add(new THREE.DirectionalLight(0xff9d7a,0.65).translateX(-800).translateY(300).translateZ(-600));
+
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(20000,20000),
+  new THREE.MeshStandardMaterial({color:0x13181f, roughness:1})
+);
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
+scene.add(new THREE.GridHelper(20000, 100, 0x21262d, 0x191f27));
+
+// เส้นทาง: จริง (เขียว) vs odom (เหลือง)
+function trail(color){
+  const MAX = 24000;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(MAX*3),3));
+  g.setDrawRange(0,0);
+  const line = new THREE.Line(g, new THREE.LineBasicMaterial({color}));
+  line.frustumCulled = false;
+  scene.add(line);
+  return { g, n:0, MAX,
+    push(x,z){
+      if(this.n>=this.MAX) return;
+      const a=this.g.attributes.position;
+      a.setXYZ(this.n, x, 6, z); this.n++;
+      a.needsUpdate = true; this.g.setDrawRange(0,this.n);
+    },
+    clear(){ this.n=0; this.g.setDrawRange(0,0); }
+  };
+}
+const trailTrue = trail(0x3fb950), trailOdom = trail(0xd29922);
+
+/* =========================================================================
+   โหลดโมเดล 3 ชิ้น (ตัวถัง + ล้อซ้าย + ล้อขวา)
+   ========================================================================= */
+const robot = new THREE.Group();          // origin = จุดแตะพื้นกลางเพลาล้อ
+const inner = new THREE.Group();          // ชดเชยให้พิกัดเดิมของ STL มาอยู่ที่ origin
+inner.position.set(0, -GROUND_Y, -AXLE.z);
+robot.add(inner);
+scene.add(robot);
+
+const matBody  = new THREE.MeshStandardMaterial({color:0xc2c8d0, metalness:.45, roughness:.5});
+const matWheel = new THREE.MeshStandardMaterial({color:0x2b3138, metalness:.25, roughness:.75});
+
+const wheelMesh = { L:null, R:null };
+const loader = new STLLoader();
+const FILES = [
+  ['model/body.stl',    'body'],
+  ['model/wheel_l.stl', 'L'],
+  ['model/wheel_r.stl', 'R'],
+];
+const progress = new Array(FILES.length).fill(0);
+const bytes    = new Array(FILES.length).fill(1);
+
+Promise.all(FILES.map(([url],i) => new Promise((res,rej) =>
+  loader.load(url, res, e => {
+    if(!e.lengthComputable) return;
+    progress[i]=e.loaded; bytes[i]=e.total; paintProgress();
+  }, rej)
+))).then(geoms => {
+  geoms.forEach((g,i) => {
+    const kind = FILES[i][1];
+    const mesh = new THREE.Mesh(g, kind==='body' ? matBody : matWheel);
+    mesh.castShadow = mesh.receiveShadow = true;
+    if(kind==='body'){
+      inner.add(mesh);
+    }else{
+      // geometry ถูก bake ให้ origin อยู่ที่เพลาแล้ว → วางตำแหน่งแล้วหมุนรอบ X ได้เลย
+      mesh.position.set(kind==='L' ? AXLE.x : -AXLE.x, AXLE.y, AXLE.z);
+      // ขีดอ้างอิงบนแก้มยาง — ยางเป็นทรงกลมเรียบ ถ้าไม่มีขีดจะดูไม่ออกว่าหมุน
+      const mark = new THREE.Mesh(
+        new THREE.BoxGeometry(3, WHEEL_R_MM*0.82, 9),
+        new THREE.MeshStandardMaterial({ color:0xf85149, emissive:0x5c1512, roughness:.6 })
+      );
+      mark.position.set((kind==='L' ? 1 : -1) * 21.2, WHEEL_R_MM*0.41, 0);
+      mark.castShadow = true;
+      mesh.add(mark);
+      wheelMesh[kind] = mesh;
+      inner.add(mesh);
+    }
+  });
+  document.getElementById('loader').classList.add('done');
+  start();
+}).catch(() => {
+  document.getElementById('lpct').textContent = 'โหลดโมเดลไม่สำเร็จ';
+  document.getElementById('lerr').textContent =
+    'อ่านไฟล์ใน model/ ไม่ได้ — ต้องเปิดผ่าน local server (python3 -m http.server) ไม่ใช่ file://';
+});
+
+function paintProgress(){
+  const done = progress.reduce((a,b)=>a+b,0), tot = bytes.reduce((a,b)=>a+b,0);
+  const p = tot ? done/tot : 0;
+  document.querySelector('#lbar > i').style.width = (p*100)+'%';
+  document.getElementById('lpct').textContent = `กำลังโหลดโมเดล… ${(p*100).toFixed(0)}%`;
+}
+
+/* =========================================================================
+   สถานะ
+   ========================================================================= */
+const S = {
+  cmdV:0, cmdW:0,          // คำสั่งเป้าหมาย (m/s, rad/s) — เทียบเท่า /cmd_vel
+  v:0,  w:0,               // ความเร็วจริงที่พื้น
+  true_:{x:0,z:0,th:0},    // ground truth
+  odom :{x:0,z:0,th:0},    // จาก encoder (สะสมความคลาดจาก slip)
+  dist:0,                  // ระยะที่ encoder วัดได้ (m)
+  wh:{
+    L:{pos:0,rpm:0,cur:0.35,tmp:32,slip:0},
+    R:{pos:0,rpm:0,cur:0.35,tmp:32,slip:0},
+  },
+  tilt:0, wh_used:0, stalled:false, stallT:0,
+  estop:false, blocked:false,
+  seq:0,
+};
+const held = new Set();
+let throttle = 0.5, surfSlip = 0.12, follow = false, paused = false;
+let logHz = 5, lastLog = 0, lastEmit = null;
+
+/* =========================================================================
+   ฟิสิกส์ + kinematics  (100 Hz)
+   ========================================================================= */
+const noise = (a)=> (Math.random()*2-1)*a;
+
+function step(dt){
+  // ---- คำสั่งจากปุ่ม/คีย์ -------------------------------------------------
+  let tv = 0, tw = 0;
+  if(!S.estop){
+    if(held.has('w')) tv += 1;
+    if(held.has('s')) tv -= 1;
+    if(held.has('a')) tw += 1;      // +ω = เลี้ยวซ้าย (ตาม ROS)
+    if(held.has('d')) tw -= 1;
+  }
+  S.cmdV = tv * MAX_V * throttle;
+  S.cmdW = tw * MAX_W * throttle;
+
+  // ---- ramp มอเตอร์ (ไม่กระโดดทันที) ------------------------------------
+  const ramp = (cur,tgt,rate)=>{
+    const d = tgt-cur, m = rate*dt;
+    return Math.abs(d)<=m ? tgt : cur + Math.sign(d)*m;
+  };
+  const cmdV = ramp(S.cmdV_r ?? 0, S.cmdV, ACC_V), cmdW = ramp(S.cmdW_r ?? 0, S.cmdW, ACC_W);
+  S.cmdV_r = cmdV; S.cmdW_r = cmdW;
+
+  // ---- differential drive: ความเร็วผิวล้อที่ "สั่ง" ----------------------
+  const vlCmd = cmdV - cmdW*L/2;
+  const vrCmd = cmdV + cmdW*L/2;
+
+  // ---- slip: ล้อหมุนเร็วกว่าที่ตัวหุ่นเคลื่อนจริง ------------------------
+  const agg = Math.min(1, Math.abs(cmdV-S.v)/0.4 + Math.abs(cmdW)/2.2);
+  const slipOf = (vc)=>{
+    if(S.blocked) return Math.abs(vc)>1e-4 ? 1 : 0;         // ล้อติด = หมุนฟรี 100%
+    if(Math.abs(vc)<1e-4) return 0;
+    return Math.max(0, Math.min(0.95, surfSlip*(0.35+0.65*agg) + noise(surfSlip*0.35)));
+  };
+  S.wh.L.slip = slipOf(vlCmd);
+  S.wh.R.slip = slipOf(vrCmd);
+
+  const vlG = vlCmd*(1-S.wh.L.slip);
+  const vrG = vrCmd*(1-S.wh.R.slip);
+
+  // ---- ความเร็วจริง + ท่าจริง ------------------------------------------
+  S.v = (vlG+vrG)/2;
+  S.w = (vrG-vlG)/L;
+  S.true_.th += S.w*dt;
+  S.true_.x  += S.v*Math.sin(S.true_.th)*dt;
+  S.true_.z  += S.v*Math.cos(S.true_.th)*dt;
+
+  // ---- odometry: คำนวณจาก encoder เท่านั้น → ไม่รู้ว่ามี slip -----------
+  const vOdom = (vlCmd+vrCmd)/2, wOdom = (vrCmd-vlCmd)/L;
+  S.odom.th += wOdom*dt;
+  S.odom.x  += vOdom*Math.sin(S.odom.th)*dt;
+  S.odom.z  += vOdom*Math.cos(S.odom.th)*dt;
+  S.dist    += Math.abs(vOdom)*dt;
+
+  // ---- ต่อล้อ: posRad สะสม (ไม่ wrap) + rpm ----------------------------
+  for(const [id,vc] of [['L',vlCmd],['R',vrCmd]]){
+    const wh = S.wh[id];
+    const omega = vc / R;                       // rad/s ที่เพลา
+    wh.pos += omega*dt;                         // สะสมต่อเนื่อง — ห้าม wrap
+    wh.rpm  = omega*60/(2*Math.PI);
+    // กระแส = idle + แรงเร่ง + แรงต้านกลิ้ง + โหลดจากการสลิป
+    const alpha = (omega - (wh.omegaPrev ?? omega)) / dt;   // rad/s² ที่เพลา
+    wh.omegaPrev = omega;
+    const target = 0.35 + 0.09*Math.abs(alpha) + 0.85*Math.abs(vc) + 6.5*wh.slip + noise(0.05);
+    wh.cur += (Math.min(14, Math.max(0.2,target)) - wh.cur) * Math.min(1, dt*6);
+    // ความร้อน: I²R เข้า, คายออกตามผลต่างอุณหภูมิ
+    wh.tmp += (wh.cur*wh.cur*0.055 - (wh.tmp-32)*0.035) * dt;
+  }
+
+  // ---- ล้อติดขัด / stall ------------------------------------------------
+  const wantMove = Math.abs(S.cmdV)>0.05 || Math.abs(S.cmdW)>0.15;
+  const moving   = Math.abs(S.v)>0.02 || Math.abs(S.w)>0.06;
+  S.stallT = (wantMove && !moving) ? S.stallT+dt : 0;
+  S.stalled = S.stallT > 0.5;
+
+  // ---- เอียง: สั่นตามพื้น + แรงเหวี่ยงเวลาเลี้ยว ------------------------
+  const rough = surfSlip>0.2 ? 1 : surfSlip>0.05 ? 0.35 : 0.1;
+  const tiltT = Math.abs(S.w)*2.4 + Math.abs(S.v)*rough*7 + noise(rough*1.6);
+  S.tilt += (tiltT - S.tilt) * Math.min(1, dt*5);
+
+  // ---- พลังงาน ----------------------------------------------------------
+  S.wh_used += V_BATT*(S.wh.L.cur+S.wh.R.cur)*dt/3600;
+
+  // ---- ขับโมเดล 3D ------------------------------------------------------
+  robot.position.set(S.true_.x*1000, 0, S.true_.z*1000);
+  robot.rotation.y = S.true_.th;
+  if(wheelMesh.L) wheelMesh.L.rotation.x = S.wh.L.pos;
+  if(wheelMesh.R) wheelMesh.R.rotation.x = S.wh.R.pos;
+  // เอียงตัวถังเล็กน้อยให้เห็นการโยน (ไม่กระทบ kinematics)
+  inner.rotation.z = THREE.MathUtils.degToRad(-S.tilt*0.35);
+  inner.rotation.x = THREE.MathUtils.degToRad(Math.min(3, Math.abs(S.cmdV-S.v)*4)*Math.sign(S.cmdV-S.v));
+}
+
+/* =========================================================================
+   payload — ตรงตาม contract ที่ออกแบบไว้
+   ========================================================================= */
+function payload(){
+  const r2 = (n,d=2)=> +n.toFixed(d);
+  return {
+    ts: Date.now(), seq: S.seq,   // เพิ่มค่าตอนส่งจริงเท่านั้น ไม่ใช่ทุกเฟรมที่วาด UI
+    wheels: ['L','R'].map(id => ({
+      id,
+      posRad : r2(S.wh[id].pos,3),
+      rpm    : r2(S.wh[id].rpm,1),
+      currentA: r2(S.wh[id].cur),
+      tempC  : r2(S.wh[id].tmp,1),
+    })),
+    // odom.y = แกน Z ของฉาก — ROS ใช้ระนาบ XY บนพื้น ส่วน three.js ใช้ XZ
+    odom: { x:r2(S.odom.x), y:r2(S.odom.z), thetaDeg:r2(norm180(S.odom.th*180/Math.PI),1), distM:r2(S.dist,1) },
+    vel : { linear:r2(S.v,3), angular:r2(S.w,3) },
+    health: {
+      slip: r2((S.wh.L.slip+S.wh.R.slip)/2),
+      stalled: S.stalled,
+      tiltDeg: r2(S.tilt,1),
+      whPerM: S.dist>0.5 ? r2(S.wh_used/S.dist,3) : null,
+    },
+  };
+}
+const norm180 = (d)=>{ while(d>180)d-=360; while(d<-180)d+=360; return d; };
+
+/* =========================================================================
+   UI
+   ========================================================================= */
+const $ = (s)=>document.querySelector(s);
+const logout = $('#logout');
+
+function paintUI(p){
+  for(const id of ['L','R']){
+    const card = $('#wc-'+id), wh = S.wh[id];
+    card.querySelector('[data-f=rpm]').textContent = wh.rpm.toFixed(1);
+    card.querySelector('[data-f=pos]').textContent = wh.pos.toFixed(2);
+    card.querySelector('[data-f=cur]').textContent = wh.cur.toFixed(2)+' A';
+    card.querySelector('[data-f=tmp]').textContent = wh.tmp.toFixed(1)+' °C';
+    const bar = card.querySelector('.bar');
+    bar.querySelector('i').style.width = Math.min(100, Math.abs(wh.rpm)/300*100)+'%';
+    bar.classList.toggle('hot', wh.tmp>70 || wh.cur>7);
+  }
+  $('#s-v').textContent  = S.v.toFixed(3);
+  $('#s-w').textContent  = S.w.toFixed(3);
+  $('#s-x').textContent  = S.odom.x.toFixed(2);
+  $('#s-y').textContent  = S.odom.z.toFixed(2);
+  $('#s-th').textContent = norm180(S.odom.th*180/Math.PI).toFixed(1)+'°';
+  $('#s-d').textContent  = S.dist.toFixed(1)+' m';
+  $('#s-slip').textContent = p.health.slip.toFixed(2);
+  $('#s-tilt').textContent = S.tilt.toFixed(1)+'°';
+  const pct = Math.max(0, 100 - S.wh_used/BATT_WH*100);
+  $('#s-bat').textContent  = pct.toFixed(1)+'%';
+  $('#s-whm').textContent  = p.health.whPerM==null ? '—' : p.health.whPerM.toFixed(3);
+
+  const drive = $('#b-drive');
+  const on = Math.abs(S.v)>0.02;
+  drive.textContent = S.estop ? 'E-STOP' : on ? 'driving' : 'idle';
+  drive.className = 'badge' + (S.estop ? ' bad' : on ? ' ok' : '');
+  const st = $('#b-stall');
+  st.textContent = S.stalled ? 'STALLED' : 'no stall';
+  st.className = 'badge' + (S.stalled ? ' bad' : '');
+  const tl = $('#b-tilt');
+  tl.textContent = S.tilt>12 ? 'TILT '+S.tilt.toFixed(0)+'°' : 'tilt ok';
+  tl.className = 'badge' + (S.tilt>12 ? ' bad' : '');
+
+  const dx = S.true_.x-S.odom.x, dz = S.true_.z-S.odom.z;
+  $('#drift').textContent = `drift ${Math.hypot(dx,dz).toFixed(2)} m`;
+}
+
+function colorize(json){
+  return json
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/"([\w]+)":/g, '<span class="k">"$1"</span>:')
+    .replace(/:(-?\d+\.?\d*)/g, ':<span class="n">$1</span>')
+    .replace(/\b(true)\b/g, '<span class="f">$1</span>')
+    .replace(/\b(false)\b/g, '<span class="s">$1</span>')
+    .replace(/"(L|R)"/g, '<span class="s">"$1"</span>');
+}
+
+function emit(p){
+  lastEmit = p;
+  const stick = logout.scrollTop + logout.clientHeight >= logout.scrollHeight - 30;
+  const t = new Date(p.ts).toTimeString().slice(0,8);
+  const div = document.createElement('div');
+  div.innerHTML = `<span class="t">${t}</span>  ` + colorize(JSON.stringify(p));
+  logout.appendChild(div);
+  while(logout.childElementCount > 300) logout.firstChild.remove();
+  if(stick) logout.scrollTop = logout.scrollHeight;
+  // ── จุดต่อ MQTT: ที่นี่คือที่ที่ publish ขึ้น broker จริง ──────────────
+  // client.publish('firebot/tesa-demo/robot/R1/drive', JSON.stringify(p))
+}
+
+/* =========================================================================
+   MQTT → broker ของ Bitstream Studio
+   คู่มือ §7: MQTT Broker = ws://127.0.0.1:8883 (WebSocket) / mqtt://127.0.0.1:1883 (TCP)
+   เบราว์เซอร์เปิด TCP socket ดิบไม่ได้ จึงต้องใช้ WebSocket = 8883
+   โหนด MQTT Subscriber ใน Sensor Studio ตั้งให้ subscribe TOPIC_TWIN
+   ========================================================================= */
+const BROKER      = 'ws://127.0.0.1:8883';
+const TOPIC_DRIVE = 'firebot/tesa-demo/robot/R1/drive';
+const TOPIC_TWIN  = 'firebot/tesa-demo/robot/R1/twin';
+
+let client = null, mqHz = 20, lastPub = 0, pubCount = 0;
+
+function mqTag(text, cls){
+  const el = $('#mq-tag');
+  el.textContent = 'MQTT: ' + text;
+  el.className = 'tag' + (cls ? ' '+cls : '');
+}
+function mqNote(s){ $('#mq-note').textContent = s; }
+
+function mqConnect(){
+  if(client) return;
+  if(!window.mqtt){
+    mqTag('ไม่พบไลบรารี','bad');
+    mqNote('โหลด vendor/mqtt.min.js ไม่ได้ — เช็คว่าไฟล์อยู่จริง');
+    return;
+  }
+  mqTag('กำลังต่อ…','wait');
+  mqNote(BROKER);
+  client = window.mqtt.connect(BROKER, {
+    clientId: 'firebot-console-' + Math.random().toString(16).slice(2,8),
+    reconnectPeriod: 3000,
+    connectTimeout: 5000,
+    clean: true,
+  });
+  client.on('connect',   ()=>{ mqTag('ต่อแล้ว','ok');  mqNote(BROKER + '  ✓'); });
+  client.on('reconnect', ()=>  mqTag('ต่อใหม่…','wait'));
+  client.on('close',     ()=>  mqTag('หลุด','bad'));
+  client.on('offline',   ()=>  mqTag('ออฟไลน์','bad'));
+  client.on('error',     e =>{ mqTag('ผิดพลาด','bad'); mqNote(String(e && e.message || e)); });
+  $('#btn-mq').textContent = '✕ ตัดการเชื่อมต่อ';
+  $('#btn-mq').classList.add('on');
+}
+function mqDisconnect(){
+  if(client){ client.end(true); client = null; }
+  mqTag('ปิด'); mqNote('ยังไม่เชื่อมต่อ');
+  $('#btn-mq').textContent = '🔗 ต่อ broker';
+  $('#btn-mq').classList.remove('on');
+}
+
+/* payload แบนสำหรับ Digital Twin — ไม่มี array เพราะการดึง wheels[0].rpm
+   ออกจาก array ในโฟลว์แบบลากวางทำยาก ส่งทั้งความเร็ว (rpm) และมุมสะสม (rad)
+   เพราะยังไม่รู้ว่าโหนด Part Spin รับแบบไหน                                   */
+function twinPayload(p){
+  return {
+    rpmL: p.wheels[0].rpm,   rpmR: p.wheels[1].rpm,
+    radL: p.wheels[0].posRad, radR: p.wheels[1].posRad,
+    x: p.odom.x, y: p.odom.y,
+    thetaDeg: p.odom.thetaDeg,
+    thetaRad: +(p.odom.thetaDeg*Math.PI/180).toFixed(4),
+  };
+}
+
+function mqPublish(p){
+  if(!client || !client.connected) return;
+  client.publish(TOPIC_DRIVE, JSON.stringify(p));
+  client.publish(TOPIC_TWIN,  JSON.stringify(twinPayload(p)));
+  $('#mq-count').textContent = ++pubCount;
+}
+
+$('#btn-mq').addEventListener('click', ()=> client ? mqDisconnect() : mqConnect());
+$('#mq-rate').addEventListener('change', e=> mqHz = +e.target.value);
+
+/* ---------- input ----------
+   ใช้ e.code (ตำแหน่งปุ่มจริง) ไม่ใช่ e.key — เพราะถ้าสลับเป็นผังแป้นไทย
+   e.key ของปุ่ม W จะเป็น "ไ" ไม่ใช่ "w" แล้วคุมหุ่นไม่ได้                     */
+const KEYMAP = {
+  KeyW:'w', ArrowUp:'w',
+  KeyS:'s', ArrowDown:'s',
+  KeyA:'a', ArrowLeft:'a',
+  KeyD:'d', ArrowRight:'d',
+};
+addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  if(e.code === 'Space'){                       // เบรก = ปล่อยทุกคำสั่ง
+    held.clear(); paintKeys(); e.preventDefault(); return;
+  }
+  if(e.code === 'KeyX'){ toggleEstop(); e.preventDefault(); return; }
+  const k = KEYMAP[e.code];
+  if(k){ held.add(k); e.preventDefault(); paintKeys(); }
+});
+addEventListener('keyup', e=>{
+  const k = KEYMAP[e.code];
+  if(k){ held.delete(k); paintKeys(); }
+});
+addEventListener('blur', ()=>{ held.clear(); paintKeys(); });
+
+function paintKeys(){
+  document.querySelectorAll('#dpad button').forEach(b =>
+    b.classList.toggle('on', held.has(b.dataset.key)));
+  const names = {w:'หน้า',s:'ถอย',a:'ซ้าย',d:'ขวา'};
+  const on = ['w','s','a','d'].filter(k=>held.has(k)).map(k=>names[k]);
+  $('#keys').textContent = on.length ? on.join(' + ') : 'หยุด';
+  $('#keys').style.color = on.length ? '#3fb950' : '';
+}
+
+/* ปุ่มบนจอ = กดติด (คลิกเปิด คลิกอีกครั้งปิด) — กดแล้วปล่อยทันทีหุ่นจะไม่ขยับ
+   เพราะมอเตอร์มี ramp จึงทำเป็น latch แทน hold */
+document.querySelectorAll('#dpad button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const k = b.dataset.key;
+    if(held.has(k)) held.delete(k);
+    else {
+      if(k==='w') held.delete('s'); if(k==='s') held.delete('w');
+      if(k==='a') held.delete('d'); if(k==='d') held.delete('a');
+      held.add(k);
+    }
+    paintKeys();
+  });
+});
+
+$('#thr').addEventListener('input', e=>{
+  throttle = e.target.value/100;
+  $('#thr-v').textContent = (MAX_V*throttle).toFixed(2)+' m/s';
+});
+$('#surf').addEventListener('change', e=> surfSlip = +e.target.value);
+
+function toggleEstop(){
+  S.estop = !S.estop;
+  if(S.estop){ held.clear(); paintKeys(); S.cmdV_r=0; S.cmdW_r=0; }
+  $('#btn-estop').classList.toggle('on', S.estop);
+}
+$('#btn-estop').addEventListener('click', toggleEstop);
+
+$('#btn-stall').addEventListener('click', e=>{
+  S.blocked = !S.blocked;
+  e.currentTarget.classList.toggle('on', S.blocked);
+});
+$('#btn-reset').addEventListener('click', ()=>{
+  S.odom={x:0,z:0,th:0}; S.true_={x:0,z:0,th:0}; S.dist=0; S.wh_used=0;
+  S.wh.L.pos=S.wh.R.pos=0;
+  trailTrue.clear(); trailOdom.clear();
+});
+$('#btn-cam').addEventListener('click', e=>{
+  follow = !follow;
+  e.currentTarget.classList.toggle('on', follow);
+});
+$('#rate').addEventListener('change', e=> logHz = +e.target.value);
+$('#btn-pause').addEventListener('click', e=>{
+  paused = !paused;
+  e.currentTarget.textContent = paused ? '▶ ต่อ' : '⏸ พัก';
+  e.currentTarget.classList.toggle('on', paused);
+});
+$('#btn-clear').addEventListener('click', ()=> logout.innerHTML='');
+$('#btn-copy').addEventListener('click', ()=>{
+  if(lastEmit) navigator.clipboard?.writeText(JSON.stringify(lastEmit,null,2));
+});
+
+/* =========================================================================
+   loop
+   ========================================================================= */
+function resize(){
+  const w = view.clientWidth, h = view.clientHeight;
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+}
+addEventListener('resize', resize);
+
+function start(){
+  resize();
+  let prev = performance.now(), acc = 0, lastUI = 0, lastTrail = 0, frames = 0, fpsT = prev;
+  const DT = 1/100;
+
+  renderer.setAnimationLoop(()=>{
+    const now = performance.now();
+    let dt = (now-prev)/1000; prev = now;
+    dt = Math.min(dt, 0.1);                    // กันกระโดดตอนสลับแท็บ
+    acc += dt;
+    while(acc >= DT){ step(DT); acc -= DT; }
+
+    // เส้นทาง 20 Hz
+    if(now-lastTrail > 50){
+      lastTrail = now;
+      trailTrue.push(S.true_.x*1000, S.true_.z*1000);
+      trailOdom.push(S.odom.x*1000, S.odom.z*1000);
+    }
+    // สร้าง payload ครั้งเดียวต่อเฟรม แล้วแชร์ให้ UI / MQTT / log ใช้ร่วมกัน
+    const wantUI  = now-lastUI  > 80;                                   // 12 Hz
+    const wantPub = client && client.connected && now-lastPub > 1000/mqHz;
+    const wantLog = !paused && now-lastLog > 1000/logHz;
+    if(wantUI || wantPub || wantLog){
+      if(wantPub || wantLog) S.seq++;        // seq นับจำนวนที่ "ส่งออก" จริง
+      const p = payload();
+      if(wantUI) { lastUI  = now; paintUI(p); }
+      if(wantPub){ lastPub = now; mqPublish(p); }
+      if(wantLog){ lastLog = now; emit(p); }
+    }
+
+    if(follow){
+      const d = new THREE.Vector3().subVectors(camera.position, controls.target);
+      controls.target.set(robot.position.x, 120, robot.position.z);
+      camera.position.copy(controls.target).add(d);
+    }
+    frames++;
+    if(now-fpsT > 500){
+      $('#hz').textContent = Math.round(frames*1000/(now-fpsT))+' Hz';
+      frames = 0; fpsT = now;
+    }
+    controls.update();
+    renderer.render(scene,camera);
+  });
+}
+</script>
+</body>
+</html>
