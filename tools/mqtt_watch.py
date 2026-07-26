@@ -9,7 +9,7 @@ import json, sys, time
 import paho.mqtt.client as mqtt
 
 HOST, PORT = '127.0.0.1', 1883          # ฝั่ง TCP ของ broker เดียวกับ ws:8883
-TOPIC = sys.argv[1] if len(sys.argv) > 1 else 'firebot/#'
+TOPIC = sys.argv[1] if len(sys.argv) > 1 else 'sensor-studio/#'
 n = 0
 
 def on_connect(c, u, f, rc, props=None):

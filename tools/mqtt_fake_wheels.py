@@ -12,7 +12,8 @@ import argparse, json, math, time
 import paho.mqtt.client as mqtt
 
 HOST, PORT = '127.0.0.1', 1883
-TOPIC_TWIN  = 'firebot/tesa-demo/robot/R1/twin'
+# ค่าเริ่มต้นของโหนด MQTT Subscriber ใน Sensor Studio (จาก defaultConfig.subscribeTopic)
+TOPIC_TWIN  = 'sensor-studio/connectivity/telemetry'
 TOPIC_DRIVE = 'firebot/tesa-demo/robot/R1/drive'
 
 R, L = 0.04515, 0.3335        # วัดจาก Firefighter-robot.stl

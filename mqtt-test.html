@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>MQTT Test — FireBot → Bitstream</title>
+<style>
+  :root{color-scheme:dark}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:#0d1117;color:#e6edf3;padding:28px;
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  h1{font-size:17px;margin-bottom:4px}
+  p.sub{color:#8b949e;font-size:12.5px;margin-bottom:22px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  #status{
+    font-size:26px;font-weight:600;padding:20px 24px;border-radius:12px;
+    border:2px solid #30363d;background:#161b22;margin-bottom:18px;
+  }
+  #status.ok  {border-color:#238636;color:#3fb950;background:rgba(63,185,80,.08)}
+  #status.bad {border-color:#f85149;color:#f85149;background:rgba(248,81,73,.08)}
+  #status.wait{border-color:#d29922;color:#d29922}
+
+  .grid{display:grid;grid-template-columns:170px 1fr;gap:8px 16px;margin-bottom:20px;font-size:13px}
+  .grid b{color:#8b949e;font-weight:400}
+  .val{font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+  .big{font-size:20px;color:#58a6ff}
+
+  #log{
+    background:#010409;border:1px solid #30363d;border-radius:10px;
+    padding:12px 14px;height:260px;overflow:auto;font-size:12px;
+    font-family:ui-monospace,Menlo,monospace;white-space:pre-wrap;
+  }
+  #log .t{color:#6e7681}
+  #log .e{color:#f85149}
+  #log .g{color:#3fb950}
+  a{color:#58a6ff}
+</style>
+</head>
+<body>
+
+<h1>MQTT Test — ส่งจากเบราว์เซอร์เข้า broker ของ Bitstream</h1>
+<p class="sub">หน้านี้มีงานเดียว: ต่อ broker แล้วส่งเลขนับขึ้นไปเรื่อย ๆ ไม่มีปุ่มให้กด ต่อเองทันที<br>
+ถ้าหน้านี้ทำงานแต่ <span class="mono">console.html</span> ไม่ทำงาน = ปัญหาอยู่ที่ console ไม่ใช่ที่ broker</p>
+
+<div id="status" class="wait">กำลังเริ่ม…</div>
+
+<div class="grid">
+  <b>ไลบรารี mqtt.js</b>       <span class="val" id="v-lib">—</span>
+  <b>broker</b>                 <span class="val" id="v-broker">—</span>
+  <b>topic</b>                  <span class="val" id="v-topic">—</span>
+  <b>ส่งสำเร็จแล้ว</b>          <span class="val big" id="v-count">0</span>
+</div>
+
+<div id="log"></div>
+
+<p class="sub" style="margin-top:16px">
+  ดูฝั่งรับด้วย: <span class="mono">python3 tools/mqtt_watch.py 'firebot/#'</span>
+  &nbsp;·&nbsp; <a href="console.html">ไปหน้า Drive Console</a>
+</p>
+
+<!-- mqtt.js vendored ในเครื่อง -->
+<script src="vendor/mqtt.min.js"></script>
+<script>
+const BROKER = 'ws://127.0.0.1:8883';
+const TOPIC  = 'firebot/tesa-demo/robot/R1/twin';
+
+const $ = s => document.querySelector(s);
+const logEl = $('#log');
+
+function log(msg, cls){
+  const t = new Date().toTimeString().slice(0,8);
+  const d = document.createElement('div');
+  d.innerHTML = `<span class="t">${t}</span>  <span class="${cls||''}">${msg}</span>`;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function status(text, cls){
+  $('#status').textContent = text;
+  $('#status').className = cls || '';
+}
+
+// จับ error ทุกอย่างมาโชว์บนหน้า ไม่ให้เงียบหายไปใน DevTools
+addEventListener('error', e => log('JS ERROR: ' + e.message, 'e'));
+addEventListener('unhandledrejection', e => log('PROMISE ERROR: ' + e.reason, 'e'));
+
+$('#v-broker').textContent = BROKER;
+$('#v-topic').textContent  = TOPIC;
+
+if(typeof mqtt === 'undefined'){
+  $('#v-lib').textContent = 'ไม่พบ ✗';
+  status('โหลด mqtt.js ไม่ได้', 'bad');
+  log('vendor/mqtt.min.js โหลดไม่สำเร็จ — เปิด http://localhost:8080/vendor/mqtt.min.js ดูว่าได้ไฟล์ไหม', 'e');
+} else {
+  $('#v-lib').textContent = 'โหลดแล้ว ✓  (mqtt v' + (mqtt.version || '5') + ')';
+  log('mqtt.js พร้อม กำลังต่อ ' + BROKER + ' …');
+  status('กำลังต่อ broker…', 'wait');
+
+  const client = mqtt.connect(BROKER, {
+    clientId: 'firebot-test-' + Math.random().toString(16).slice(2,8),
+    reconnectPeriod: 3000,
+    connectTimeout: 5000,
+  });
+
+  let n = 0;
+  client.on('connect', () => {
+    status('ต่อ broker ได้แล้ว ✓', 'ok');
+    log('CONNECT สำเร็จ — เริ่มส่งที่ 5 Hz', 'g');
+  });
+  client.on('reconnect', () => { status('กำลังต่อใหม่…','wait'); log('RECONNECT'); });
+  client.on('close',     () => { status('การเชื่อมต่อปิด','bad'); log('CLOSE','e'); });
+  client.on('offline',   () => { status('ออฟไลน์','bad'); log('OFFLINE','e'); });
+  client.on('error',     e  => {
+    status('ผิดพลาด: ' + (e.message || e), 'bad');
+    log('ERROR: ' + (e.message || e), 'e');
+  });
+
+  setInterval(() => {
+    if(!client.connected) return;
+    n++;
+    const p = { test:'browser', n,
+                rpmL:+(60*Math.sin(n/12)).toFixed(1),
+                rpmR:+(60*Math.cos(n/12)).toFixed(1),
+                x:+(Math.sin(n/25)*2).toFixed(2),
+                y:+(Math.cos(n/25)*2).toFixed(2),
+                thetaDeg:+((n*3)%360-180).toFixed(1) };
+    client.publish(TOPIC, JSON.stringify(p));
+    $('#v-count').textContent = n;
+    if(n % 5 === 0) log('ส่งแล้ว ' + n + ' ครั้ง — ล่าสุด rpmL=' + p.rpmL);
+  }, 200);
+}
+</script>
+</body>
+</html>
